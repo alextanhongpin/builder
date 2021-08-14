@@ -110,7 +110,7 @@ func extractFields(structType *types.Struct) []StructField {
 
 		var (
 			name         = field.Name()
-			pkgPath      = field.Pkg().Path()
+			pkgPath      = field.Pkg().Name()
 			exported     = field.Exported()
 			namedField   = false
 			fieldPkgPath = ""
@@ -127,7 +127,7 @@ func extractFields(structType *types.Struct) []StructField {
 		switch t := typ.(type) {
 		case *types.Named:
 			obj := t.Obj()
-			fieldPkgPath = obj.Pkg().Path()
+			fieldPkgPath = obj.Pkg().Name()
 			fieldType = obj.Name()
 			namedField = true
 		//case *types.Pointer:
@@ -177,9 +177,9 @@ func generateStructFromFields(pkgName, out, structName string, fields []StructFi
 
 	for _, field := range fields {
 		if field.IsPointer {
-			generateWitherPointer(f, structName, field)
+			generateWitherPointer(f, pkgName, structName, field)
 		} else {
-			generateWither(f, structName, field)
+			generateWither(f, pkgName, structName, field)
 		}
 	}
 
@@ -211,7 +211,7 @@ func generateBuilderConstructor(f *jen.File, structName string) {
 	).Line()
 }
 
-func generateWither(f *jen.File, structName string, field StructField) {
+func generateWither(f *jen.File, pkgName, structName string, field StructField) {
 	// Output:
 	// WithName sets name.
 	// func (b FooBuilder) WithName(name string) FooBuilder {
@@ -228,7 +228,7 @@ func generateWither(f *jen.File, structName string, field StructField) {
 	).Id(funcName). // WithName
 			Params(
 			// name string
-			Id(lowerFirst(field.Name)).Qual(field.FieldPkgPath, field.FieldType),
+			Id(lowerFirst(field.Name)).Qual(skipCurrentPackagePath(pkgName, field), field.FieldType),
 		).
 		Id(builderName). // Return type: FooBuilder
 		Block(
@@ -237,7 +237,7 @@ func generateWither(f *jen.File, structName string, field StructField) {
 		).Line()
 }
 
-func generateWitherPointer(f *jen.File, structName string, field StructField) {
+func generateWitherPointer(f *jen.File, pkgName, structName string, field StructField) {
 	// Output:
 	// WithName sets name.
 	// func (b FooBuilder) WithName(name string, valid bool) FooBuilder {
@@ -261,7 +261,7 @@ func generateWitherPointer(f *jen.File, structName string, field StructField) {
 	).Id(funcName). // WithName
 			Params(
 			// name string
-			Id(lowerFirst(field.Name)).Qual(field.FieldPkgPath, field.FieldType),
+			Id(lowerFirst(field.Name)).Qual(skipCurrentPackagePath(pkgName, field), field.FieldType),
 			Id(validVar).Bool(),
 		).
 		Id(builderName). // Return type: FooBuilder
@@ -290,6 +290,15 @@ func generateBuildFunc(f *jen.File, structName string) {
 				Block(
 			Return(Id(shortName).Dot(lowerFirst(structName))),
 		).Line()
+}
+
+// skipCurrentPackagePath returns "" if the package is referring to an entity
+// that belongs to itself, e.g. package foo calling foo.Foo.
+func skipCurrentPackagePath(pkgName string, field StructField) string {
+	if pkgName == field.FieldPkgPath {
+		return ""
+	}
+	return field.FieldPkgPath
 }
 
 func upperFirst(s string) string {

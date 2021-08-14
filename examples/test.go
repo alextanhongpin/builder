@@ -2,6 +2,8 @@ package main
 
 import "database/sql"
 
+type Bar string
+
 //go:generate go run ../main.go -type Foo
 type Foo struct {
 	id      int64
@@ -10,4 +12,5 @@ type Foo struct {
 	valid   *bool
 	url     string
 	realAge *int64
+	bar     Bar
 }
