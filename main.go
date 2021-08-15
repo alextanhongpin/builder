@@ -68,6 +68,8 @@ func generateStructFromFields(opt gen.Option) error {
 
 	generateBuildFunc(f, structName)
 	generateBuildPartialFunc(f, structName)
+	generateSetOrPanicFunc(f, structName)
+	generateCloneFieldsFunc(f, structName)
 
 	return f.Save(out) // e.g. main_gen.go
 }
@@ -76,14 +78,12 @@ func generateBuilder(f *jen.File, structName string) {
 	// Output:
 	//type FooBuilder struct {
 	//  foo Foo
-	//  fields []string
-	//  fieldsSet uint64
+	//  fields map[string]bool
 	//}
 
 	f.Type().Id(generateBuilderName(structName)).Struct(
 		Id(gen.LowerFirst(structName)).Id(structName),
-		Id("fields").Index().String(),
-		Id("fieldsSet").Uint64(),
+		Id("fields").Map(String()).Bool(),
 	).Line()
 }
 
@@ -91,21 +91,19 @@ func generateBuilderConstructor(f *jen.File, structName string, fields []gen.Str
 	// Output:
 	//func NewFooBuilder() *FooBuilder {
 	//  return &FooBuilder{
-	//    fields: []string{"field1", "field2", "field3"},
+	//    fields: map[string]bool{"field1": false, "field2": false},
 	//  }
 	//}
-	fieldValues := make([]Code, len(fields))
-	for i, field := range fields {
-		fieldValues[i] = Lit(field.Name)
+	dict := make(Dict)
+	for _, field := range fields {
+		dict[Lit(field.Name)] = Lit(false)
 	}
 
 	builderName := generateBuilderName(structName)
 	f.Func().Id(fmt.Sprintf("New%s", builderName)).Params().Op("*").Id(builderName).Block(
-		Return(Op("&").Id(builderName).Values(
-			Dict{
-				Id("fields"): Index().String().Values(fieldValues...),
-			},
-		)),
+		Return(Op("&").Id(builderName).Values(Dict{
+			Id("fields"): Map(String()).Bool().Values(dict),
+		})),
 	).Line()
 }
 
@@ -113,7 +111,7 @@ func generateWither(f *jen.File, pkgPath, structName string, field gen.StructFie
 	// Output:
 	// WithName sets name.
 	// func (b FooBuilder) WithName(name string) FooBuilder {
-	//   b.fieldsSet |= 1 << n
+	//   b.setOrPanic("name")
 	// 	 b.foo.name = name
 	//   return b
 	// }
@@ -126,10 +124,10 @@ func generateWither(f *jen.File, pkgPath, structName string, field gen.StructFie
 	f.Func().Params(
 		Id(shortName).Id(builderName), // (b *FooBuilder)
 	).Id(funcName). // WithName
-			Params(generateType(pkgPath, field)). // name string
-			Id(builderName).                      // Return type: FooBuilder
+			Params(Id(gen.LowerFirst(field.Name)).Add(generateType(pkgPath, field.Field, nil))). // name string
+			Id(builderName).                                                                     // Return type: FooBuilder
 			Block(
-			Id("b").Dot("fieldsSet").Op("|=").Lit(1).Op("<<").Lit(pos),
+			Id("b").Dot("setOrPanic").Call(Lit(gen.LowerFirst(field.Name))),
 			Id(shortName).Dot(gen.LowerFirst(structName)).Dot(field.Name).Op("=").Id(gen.LowerFirst(field.Name)),
 			Return(Id(shortName)),
 		).Line()
@@ -139,7 +137,7 @@ func generateWitherPointer(f *jen.File, pkgPath, structName string, field gen.St
 	// Output:
 	// WithName sets name.
 	// func (b FooBuilder) WithName(name string, valid bool) FooBuilder {
-	//   b.fieldsSet |= 1 << n
+	//   b.setOrPanic("name")
 	//   if valid {
 	//     b.foo.name = name
 	//   }
@@ -154,6 +152,12 @@ func generateWitherPointer(f *jen.File, pkgPath, structName string, field gen.St
 		validVar += "1"
 	}
 
+	ptr := "&"
+	// Disable pointer for collection pointer.
+	if field.Field.IsCollection && field.Field.IsPointer {
+		ptr = ""
+	}
+
 	funcName := fmt.Sprintf("With%s", gen.UpperCommonInitialism(field.Name))
 	f.Comment(fmt.Sprintf("%s sets %s.", funcName, field.Name))
 	f.Func().Params(
@@ -161,14 +165,14 @@ func generateWitherPointer(f *jen.File, pkgPath, structName string, field gen.St
 	).Id(funcName). // WithName
 			Params(
 			// name string
-			generateType(pkgPath, field),
+			Id(gen.LowerFirst(field.Name)).Add(generateType(pkgPath, field.Field, nil)), // name string
 			Id(validVar).Bool(),
 		).
 		Id(builderName). // Return type: FooBuilder
 		Block(
-			Id("b").Dot("fieldsSet").Op("|=").Lit(1).Op("<<").Lit(pos),
+			Id("b").Dot("setOrPanic").Call(Lit(gen.LowerFirst(field.Name))),
 			If(Id(validVar)).Block(
-				Id(shortName).Dot(gen.LowerFirst(structName)).Dot(field.Name).Op("=").Op("&").Id(gen.LowerFirst(field.Name)),
+				Id(shortName).Dot(gen.LowerFirst(structName)).Dot(field.Name).Op("=").Op(ptr).Id(gen.LowerFirst(field.Name)),
 			),
 			Return(Id(shortName)),
 		).Line()
@@ -178,9 +182,9 @@ func generateBuildFunc(f *jen.File, structName string) {
 	// Output:
 	// Build returns Foo.
 	// func (b FooBuilder) Build() Foo {
-	//   for i := 0; i < len(b.fields); i++ {
-	//     if (b.fieldsSet & 1 << i) != (1 << i) {
-	//       panic(fmt.Sprintf("builder.BuildErr: %q not set", b.fields[i]))
+	//   for field, isSet := range b.fields {
+	//     if !isSet {
+	//       panic(fmt.Sprintf("builder.BuildErr: %q not set", field)
 	//     }
 	//   }
 	//   return b.foo
@@ -195,12 +199,10 @@ func generateBuildFunc(f *jen.File, structName string) {
 				Id(structName). // Return type: Foo
 				Block(
 			For(
-				Id("i").Op(":=").Lit(0),
-				Id("i").Op("<").Len(Id("b").Dot("fields")),
-				Id("i").Op("++"),
+				List(Id("field"), Id("isSet")).Op(":=").Range().Id("b").Dot("fields"),
 			).Block(
-				If(Parens(Id("b").Dot("fieldsSet").Op("&").Lit(1).Op("<<").Id("i"))).Op("!=").Lit(1).Op("<<").Id("i").Block(
-					Panic(Qual("fmt", "Sprintf").Call(Lit("builder.BuildErr: %q not set"), Id("b").Dot("fields").Index(Id("i")))),
+				If(Op("!").Id("isSet")).Block(
+					Panic(Qual("fmt", "Sprintf").Call(Lit("builder.BuildErr: %q not set"), Id("field"))),
 				),
 			),
 			Return(Id(shortName).Dot(gen.LowerFirst(structName))),
@@ -218,7 +220,7 @@ func generateBuildPartialFunc(f *jen.File, structName string) {
 	shortName := "b"
 	f.Comment(fmt.Sprintf("Build returns %s.", structName))
 	f.Func().Params(
-		Id(shortName).Id(builderName), // (b *FooBuilder)
+		Id(shortName).Id(builderName), // (b FooBuilder)
 	).Id("BuildPartial").Params(). // Build()
 					Id(structName). // Return type: Foo
 					Block(
@@ -226,15 +228,81 @@ func generateBuildPartialFunc(f *jen.File, structName string) {
 		).Line()
 }
 
+func generateSetOrPanicFunc(f *jen.File, structName string) {
+	// Output:
+	// Build returns Foo.
+	// func (b *FooBuilder) setOrPanic(field string) {
+	//   c := b.cloneFields()
+	//   if c[field] {
+	//     panic(fmt.Sprintf("builder.BuildErr: setting %q twice", field))
+	//   }
+	//   c[field] = true
+	//   b.fields = c
+	// }
+
+	builderName := generateBuilderName(structName)
+	shortName := "b"
+	f.Comment("setOrPanic sets the fields only if it has not yet been set. It will panic when calling it twice.")
+	f.Func().Params(
+		Id(shortName).Op("*").Id(builderName), // (b FooBuilder)
+	).Id("setOrPanic").Params(Id("field").String()). // setOrPanic(field string)
+								Block(
+			Id("c").Op(":=").Id("b").Dot("cloneFields").Call(),
+			If(Id("c").Index(Id("field"))).Block(
+				Panic(Qual("fmt", "Sprintf").Call(Lit("builder.BuildErr: cannot set %q twice"), Id("field"))),
+			),
+			Id("c").Index(Id("field")).Op("=").Lit(true),
+			Id("b").Dot("fields").Op("=").Id("c"),
+		).Line()
+}
+
+func generateCloneFieldsFunc(f *jen.File, structName string) {
+	// Output:
+	// Build returns Foo.
+	// func (b FooBuilder) cloneFields() map[string]bool {
+	//   result := make(map[string]bool)
+	//   for k, v := range b.fields {
+	//     result[k] = v
+	//   }
+	//   return result
+	// }
+
+	builderName := generateBuilderName(structName)
+	shortName := "b"
+	f.Comment("cloneFields clone the fields to avoid mutation")
+	f.Func().Params(
+		Id(shortName).Id(builderName), // (b FooBuilder)
+	).Id("cloneFields").Params(). // cloneFields()
+					Map(String()).Bool(). // map[string]bool
+					Block(
+			Id("result").Op(":=").Make(Map(String()).Bool()),
+			For(
+				List(Id("k"), Id("v")).Op(":=").Range().Id("b").Dot("fields"),
+			).Block(
+				Id("result").Index(Id("k")).Op("=").Id("v"),
+			),
+			Return(Id("result")),
+		).Line()
+}
+
 // Generate the field and type for primitive, map or collection.
-func generateType(pkgPath string, field gen.StructField) Code {
-	param := Id(gen.LowerFirst(field.Name))
+func generateType(pkgPath string, field *gen.Field, parent *gen.Field) Code {
+	param := Id("")
 	if field.IsMap {
-		param = param.Map(Qual(gen.SkipCurrentPackagePath(pkgPath, field.MapKeyPkgPath), field.MapKeyType))
+		key, value := field.MapKey, field.MapValue
+		param = param.Map(generateType(pkgPath, key, field))
+		param = param.Add(generateType(pkgPath, value, field))
+		return param
 	}
 	if field.IsCollection {
 		param = param.Index()
 	}
-	param = param.Qual(gen.SkipCurrentPackagePath(pkgPath, field.FieldPkgPath), field.FieldType)
+	// At the moment, allow setter for []*Type
+	isCollectionPointer := field.IsPointer && field.IsCollection
+	belongsToPointerMapOrCollection := parent != nil && (parent.IsCollection || parent.IsMap) && field.IsPointer
+	if belongsToPointerMapOrCollection || isCollectionPointer {
+		param = param.Add(Op("*"))
+	}
+	param = param.Qual(gen.SkipCurrentPackagePath(pkgPath, field.PkgPath), field.Type)
 	return param
 }
