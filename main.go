@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/alextanhongpin/builder/pkg/gen"
+	"github.com/alextanhongpin/pkg/gen"
 	"github.com/dave/jennifer/jen"
 	. "github.com/dave/jennifer/jen"
 )
