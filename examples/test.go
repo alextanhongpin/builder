@@ -13,4 +13,5 @@ type Foo struct {
 	url     string
 	realAge *int64
 	bar     Bar
+	skip    string `build:"-"`
 }

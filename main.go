@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/alextanhongpin/pkg/stringcase"
@@ -14,6 +15,18 @@ import (
 	. "github.com/dave/jennifer/jen"
 	"golang.org/x/tools/go/packages"
 )
+
+var (
+	tagRe *regexp.Regexp
+)
+
+func init() {
+	tagRe = regexp.MustCompile(`build:"-"`)
+}
+
+func skipBuild(tag string) bool {
+	return tagRe.MatchString(tag)
+}
 
 // Generator is the name of this tool.
 const Generator = "builder"
@@ -33,7 +46,7 @@ type StructField struct {
 	// When true, the FieldPkgPath is not empty.
 	NamedField   bool   `example:"true"`
 	FieldPkgPath string `example:"database/sql"`
-	Tag          string `example:""`
+	Tag          string `example:"build:'-'"` // To ignore builder.
 	IsPointer    bool
 }
 
@@ -178,6 +191,9 @@ func generateStructFromFields(pkgName, pkgPath, out, structName string, fields [
 	generateBuilderConstructor(f, structName)
 
 	for _, field := range fields {
+		if skipBuild(field.Tag) {
+			continue
+		}
 		if field.IsPointer {
 			generateWitherPointer(f, pkgPath, structName, field)
 		} else {
