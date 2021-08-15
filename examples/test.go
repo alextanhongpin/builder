@@ -7,7 +7,7 @@ import (
 
 type Bar string
 
-//go:generate go run ../main.go -type Foo,Simple
+//go:generate go run ../main.go -type Foo
 type Foo struct {
 	id                  int64
 	name                string
@@ -27,8 +27,17 @@ type Foo struct {
 	stringByBarPtr      map[*Bar]string
 }
 
+//go:generate go run ../main.go -type Simple -customFields=age
 type Simple struct {
 	name string
+	age  int `build:"-"`
+}
+
+// Extend simple builder and check if the field is set.
+func (s SimpleBuilder) WithCustomAge(age int) SimpleBuilder {
+	s.setOrPanic("age")
+	s.simple.age = age
+	return s
 }
 
 func main() {
@@ -36,7 +45,7 @@ func main() {
 	log.Println(builder.BuildPartial())
 	log.Println(builder)
 	log.Println(builder.WithName("john"))
-	log.Println(builder.WithName("john").Build())
+	log.Println(builder.WithName("john").WithCustomAge(10).Build())
 	log.Println(builder)
 	log.Println(builder.Build())
 }

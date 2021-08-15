@@ -1,8 +1,10 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/alextanhongpin/pkg/gen"
 	"github.com/dave/jennifer/jen"
@@ -25,7 +27,10 @@ func skipBuild(tag string) bool {
 const Generator = "builder"
 
 func main() {
-	if err := gen.New(generateStructFromFields); err != nil {
+	customFields := flag.String("customFields", "", "Custom fields to be added to the map for checking")
+	if err := gen.New(func(opt gen.Option) error {
+		return generateStructFromFields(opt, strings.Split(*customFields, ","))
+	}); err != nil {
 		panic(err)
 	}
 }
@@ -35,7 +40,7 @@ func generateBuilderName(structName string) string {
 	return builderName
 }
 
-func generateStructFromFields(opt gen.Option) error {
+func generateStructFromFields(opt gen.Option, customFields []string) error {
 	var (
 		pkgName    = opt.PkgName
 		pkgPath    = opt.PkgPath
@@ -56,7 +61,7 @@ func generateStructFromFields(opt gen.Option) error {
 	}
 
 	generateBuilder(f, structName)
-	generateBuilderConstructor(f, structName, validFields)
+	generateBuilderConstructor(f, structName, validFields, customFields)
 
 	for i, field := range validFields {
 		if field.IsPointer {
@@ -87,7 +92,7 @@ func generateBuilder(f *jen.File, structName string) {
 	).Line()
 }
 
-func generateBuilderConstructor(f *jen.File, structName string, fields []gen.StructField) {
+func generateBuilderConstructor(f *jen.File, structName string, fields []gen.StructField, customFields []string) {
 	// Output:
 	//func NewFooBuilder() *FooBuilder {
 	//  return &FooBuilder{
@@ -97,6 +102,10 @@ func generateBuilderConstructor(f *jen.File, structName string, fields []gen.Str
 	dict := make(Dict)
 	for _, field := range fields {
 		dict[Lit(field.Name)] = Lit(false)
+	}
+
+	for _, customField := range customFields {
+		dict[Lit(customField)] = Lit(false)
 	}
 
 	builderName := generateBuilderName(structName)
