@@ -25,10 +25,12 @@ func skipBuild(tag string) bool {
 const Generator = "builder"
 
 func main() {
-	gen.New(generateStructFromFields)
+	if err := gen.New(generateStructFromFields); err != nil {
+		panic(err)
+	}
 }
 
-func genBuilderName(structName string) string {
+func generateBuilderName(structName string) string {
 	builderName := fmt.Sprintf("%sBuilder", structName)
 	return builderName
 }
@@ -78,7 +80,7 @@ func generateBuilder(f *jen.File, structName string) {
 	//  fieldsSet uint64
 	//}
 
-	f.Type().Id(genBuilderName(structName)).Struct(
+	f.Type().Id(generateBuilderName(structName)).Struct(
 		Id(gen.LowerFirst(structName)).Id(structName),
 		Id("fields").Index().String(),
 		Id("fieldsSet").Uint64(),
@@ -97,7 +99,7 @@ func generateBuilderConstructor(f *jen.File, structName string, fields []gen.Str
 		fieldValues[i] = Lit(field.Name)
 	}
 
-	builderName := genBuilderName(structName)
+	builderName := generateBuilderName(structName)
 	f.Func().Id(fmt.Sprintf("New%s", builderName)).Params().Op("*").Id(builderName).Block(
 		Return(Op("&").Id(builderName).Values(
 			Dict{
@@ -116,19 +118,17 @@ func generateWither(f *jen.File, pkgPath, structName string, field gen.StructFie
 	//   return b
 	// }
 
-	builderName := genBuilderName(structName)
+	builderName := generateBuilderName(structName)
 	shortName := "b"
 	funcName := fmt.Sprintf("With%s", gen.UpperCommonInitialism(field.Name))
+
 	f.Comment(fmt.Sprintf("%s sets %s.", funcName, field.Name))
 	f.Func().Params(
 		Id(shortName).Id(builderName), // (b *FooBuilder)
 	).Id(funcName). // WithName
-			Params(
-			// name string
-			Id(gen.LowerFirst(field.Name)).Qual(gen.SkipCurrentPackagePath(pkgPath, field), field.FieldType),
-		).
-		Id(builderName). // Return type: FooBuilder
-		Block(
+			Params(generateType(pkgPath, field)). // name string
+			Id(builderName).                      // Return type: FooBuilder
+			Block(
 			Id("b").Dot("fieldsSet").Op("|=").Lit(1).Op("<<").Lit(pos),
 			Id(shortName).Dot(gen.LowerFirst(structName)).Dot(field.Name).Op("=").Id(gen.LowerFirst(field.Name)),
 			Return(Id(shortName)),
@@ -146,13 +146,14 @@ func generateWitherPointer(f *jen.File, pkgPath, structName string, field gen.St
 	//   return b
 	// }
 
-	builderName := genBuilderName(structName)
+	builderName := generateBuilderName(structName)
 	shortName := "b"
 	// Avoid conflict in naming if the variable is already named "valid".
 	validVar := "valid"
 	if field.Name == validVar {
 		validVar += "1"
 	}
+
 	funcName := fmt.Sprintf("With%s", gen.UpperCommonInitialism(field.Name))
 	f.Comment(fmt.Sprintf("%s sets %s.", funcName, field.Name))
 	f.Func().Params(
@@ -160,7 +161,7 @@ func generateWitherPointer(f *jen.File, pkgPath, structName string, field gen.St
 	).Id(funcName). // WithName
 			Params(
 			// name string
-			Id(gen.LowerFirst(field.Name)).Qual(gen.SkipCurrentPackagePath(pkgPath, field), field.FieldType),
+			generateType(pkgPath, field),
 			Id(validVar).Bool(),
 		).
 		Id(builderName). // Return type: FooBuilder
@@ -185,7 +186,7 @@ func generateBuildFunc(f *jen.File, structName string) {
 	//   return b.foo
 	// }
 
-	builderName := genBuilderName(structName)
+	builderName := generateBuilderName(structName)
 	shortName := "b"
 	f.Comment(fmt.Sprintf("Build returns %s.", structName))
 	f.Func().Params(
@@ -213,7 +214,7 @@ func generateBuildPartialFunc(f *jen.File, structName string) {
 	//   return b.foo
 	// }
 
-	builderName := genBuilderName(structName)
+	builderName := generateBuilderName(structName)
 	shortName := "b"
 	f.Comment(fmt.Sprintf("Build returns %s.", structName))
 	f.Func().Params(
@@ -223,4 +224,17 @@ func generateBuildPartialFunc(f *jen.File, structName string) {
 					Block(
 			Return(Id(shortName).Dot(gen.LowerFirst(structName))),
 		).Line()
+}
+
+// Generate the field and type for primitive, map or collection.
+func generateType(pkgPath string, field gen.StructField) Code {
+	param := Id(gen.LowerFirst(field.Name))
+	if field.IsMap {
+		param = param.Map(Qual(gen.SkipCurrentPackagePath(pkgPath, field.MapKeyPkgPath), field.MapKeyType))
+	}
+	if field.IsCollection {
+		param = param.Index()
+	}
+	param = param.Qual(gen.SkipCurrentPackagePath(pkgPath, field.FieldPkgPath), field.FieldType)
+	return param
 }

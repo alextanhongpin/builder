@@ -13,7 +13,7 @@ type FooBuilder struct {
 }
 
 func NewFooBuilder() *FooBuilder {
-	return &FooBuilder{fields: []string{"id", "name", "age", "valid", "url", "realAge", "bar"}}
+	return &FooBuilder{fields: []string{"id", "name", "age", "valid", "url", "realAge", "bar", "bars", "barByString", "stringByBar", "sliceBarByString"}}
 }
 
 // WithID sets id.
@@ -66,6 +66,34 @@ func (b FooBuilder) WithRealAge(realAge int64, valid bool) FooBuilder {
 func (b FooBuilder) WithBar(bar Bar) FooBuilder {
 	b.fieldsSet |= 1 << 6
 	b.foo.bar = bar
+	return b
+}
+
+// WithBars sets bars.
+func (b FooBuilder) WithBars(bars []Bar) FooBuilder {
+	b.fieldsSet |= 1 << 7
+	b.foo.bars = bars
+	return b
+}
+
+// WithBarByString sets barByString.
+func (b FooBuilder) WithBarByString(barByString map[string]Bar) FooBuilder {
+	b.fieldsSet |= 1 << 8
+	b.foo.barByString = barByString
+	return b
+}
+
+// WithStringByBar sets stringByBar.
+func (b FooBuilder) WithStringByBar(stringByBar map[Bar]string) FooBuilder {
+	b.fieldsSet |= 1 << 9
+	b.foo.stringByBar = stringByBar
+	return b
+}
+
+// WithSliceBarByString sets sliceBarByString.
+func (b FooBuilder) WithSliceBarByString(sliceBarByString map[string][]Bar) FooBuilder {
+	b.fieldsSet |= 1 << 10
+	b.foo.sliceBarByString = sliceBarByString
 	return b
 }
 
