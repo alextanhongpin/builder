@@ -105,6 +105,9 @@ func generateBuilderConstructor(f *jen.File, structName string, fields []gen.Str
 	}
 
 	for _, customField := range customFields {
+		if len(strings.TrimSpace(customField)) == 0 {
+			continue
+		}
 		dict[Lit(customField)] = Lit(false)
 	}
 

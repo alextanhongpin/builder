@@ -12,10 +12,10 @@ $ go install github.com/alextanhongpin/builder
 ## Usage
 
 ```go
-//go:generate builder -type Simple
+//go:generate go run ../main.go -type Simple -customFields=age
 type Simple struct {
 	name string
-	customType YourSpecialType `build:"-"`
+	age  int `build:"-"`
 }
 ```
 
@@ -33,7 +33,10 @@ type SimpleBuilder struct {
 }
 
 func NewSimpleBuilder() *SimpleBuilder {
-	return &SimpleBuilder{fields: map[string]bool{"name": false}}
+	return &SimpleBuilder{fields: map[string]bool{
+		"age":  false,
+		"name": false,
+	}}
 }
 
 // WithName sets name.
@@ -82,12 +85,12 @@ func (b SimpleBuilder) cloneFields() map[string]bool {
 
 Sometimes you want a custom type, but also need to take advantage of the `Build()` which panics if not all the fields are set
 ```go
-func (b SimpleBuilder) WithYourCustomWither(custom string) SimpleBuilder {
-	b.setOrPanic("customType")
-	b.simple.customType = NewCustomType(custom)
-	return b
+// Extend simple builder and check if the field is set.
+func (s SimpleBuilder) WithCustomAge(age int) SimpleBuilder {
+	s.setOrPanic("age")
+	s.simple.age = age
+	return s
 }
-
 ```
 
 ## Build
@@ -96,11 +99,11 @@ func (b SimpleBuilder) WithYourCustomWither(custom string) SimpleBuilder {
 ```go
 func main() {
 	builder := NewSimpleBuilder()
-	log.Println(builder.BuildPartial()) // Allows the entity to be build partially.
-	log.Println(builder)
-	log.Println(builder.WithName("john"))
-	log.Println(builder.WithName("john").Build())
-	log.Println(builder)
-	log.Println(builder.Build()) // This will panic, since "name" is not set yet.
+	log.Println(builder.BuildPartial())                             // Allows the entity to be build partially.
+	log.Println(builder)                                            // None of the values are set yet.
+	log.Println(builder.WithName("john"))                           // name is set to true
+	log.Println(builder.WithName("john").WithCustomAge(10).Build()) // name and age set and build success
+	log.Println(builder)                                            // Every instance is immutable and they don't share state.
+	log.Println(builder.Build())                                    // This will panic, since "name" and "age" is not set yet.
 }
 ```

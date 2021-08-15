@@ -13,7 +13,6 @@ type FooBuilder struct {
 
 func NewFooBuilder() *FooBuilder {
 	return &FooBuilder{fields: map[string]bool{
-		"":                    false,
 		"age":                 false,
 		"bar":                 false,
 		"barByString":         false,

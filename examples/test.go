@@ -42,10 +42,11 @@ func (s SimpleBuilder) WithCustomAge(age int) SimpleBuilder {
 
 func main() {
 	builder := NewSimpleBuilder()
-	log.Println(builder.BuildPartial())
-	log.Println(builder)
-	log.Println(builder.WithName("john"))
-	log.Println(builder.WithName("john").WithCustomAge(10).Build())
-	log.Println(builder)
-	log.Println(builder.Build())
+	log.Println(builder)                                            // None of the values are set yet.
+	log.Println(builder.WithName("john"))                           // name is set to true
+	log.Println(builder.WithName("john").WithCustomAge(10))         // name and age is set to true.
+	log.Println(builder.WithName("john").WithCustomAge(10).Build()) // Build succeeds when all fields are set.
+	log.Println(builder.BuildPartial())                             // Build succeeds even when not all fields are set.
+	log.Println(builder)                                            // Every instance is immutable and they don't share state.
+	log.Println(builder.Build())                                    // This will panic, since "name" and "age" is not set yet.
 }
