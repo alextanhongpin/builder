@@ -27,7 +27,7 @@ type Foo struct {
 	stringByBarPtr      map[*Bar]string
 }
 
-//go:generate go run ../main.go -type Simple -customFields=age
+//go:generate go run ../main.go -type Simple
 type Simple struct {
 	name string
 	age  int `build:"-"`
@@ -35,15 +35,16 @@ type Simple struct {
 
 // Extend simple builder and check if the field is set.
 func (s SimpleBuilder) WithCustomAge(age int) SimpleBuilder {
-	s.setOrPanic("age")
+	s.mustSet("age")
 	s.simple.age = age
 	return s
 }
 
 func main() {
-	builder := NewSimpleBuilder()
-	log.Println(builder)                                            // None of the values are set yet.
-	log.Println(builder.WithName("john"))                           // name is set to true
+	builder := NewSimpleBuilder("age")
+	log.Println(builder)                  // None of the values are set yet.
+	log.Println(builder.WithName("john")) // name is set to true
+	//log.Println(builder.WithName("john").WithName("jessie"))        // panic on setting twice.
 	log.Println(builder.WithName("john").WithCustomAge(10))         // name and age is set to true.
 	log.Println(builder.WithName("john").WithCustomAge(10).Build()) // Build succeeds when all fields are set.
 	log.Println(builder.BuildPartial())                             // Build succeeds even when not all fields are set.

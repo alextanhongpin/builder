@@ -7,54 +7,52 @@ import (
 )
 
 type FooBuilder struct {
-	foo    Foo
-	fields map[string]bool
+	foo       Foo
+	fields    []string
+	fieldsSet uint64
 }
 
-func NewFooBuilder() *FooBuilder {
-	return &FooBuilder{fields: map[string]bool{
-		"age":                 false,
-		"bar":                 false,
-		"barByString":         false,
-		"barPtrByString":      false,
-		"barPtrs":             false,
-		"bars":                false,
-		"id":                  false,
-		"name":                false,
-		"realAge":             false,
-		"sliceBarByString":    false,
-		"sliceBarPtrByString": false,
-		"stringByBar":         false,
-		"stringByBarPtr":      false,
-		"url":                 false,
-		"valid":               false,
-	}}
+func NewFooBuilder(additionalFields ...string) *FooBuilder {
+	for _, field := range additionalFields {
+		if field == "" {
+			panic("builder: empty string in constructor")
+		}
+	}
+	exists := make(map[string]bool)
+	fields := append([]string{"id", "name", "age", "valid", "url", "realAge", "bar", "bars", "barPtrs", "barByString", "stringByBar", "sliceBarByString", "sliceBarPtrByString", "barPtrByString", "stringByBarPtr"}, additionalFields...)
+	for _, field := range fields {
+		if exists[field] {
+			panic(fmt.Sprintf("builder: duplicate field %q", field))
+		}
+		exists[field] = true
+	}
+	return &FooBuilder{fields: fields}
 }
 
 // WithID sets id.
 func (b FooBuilder) WithID(id int64) FooBuilder {
-	b.setOrPanic("id")
+	b.mustSet("id")
 	b.foo.id = id
 	return b
 }
 
 // WithName sets name.
 func (b FooBuilder) WithName(name string) FooBuilder {
-	b.setOrPanic("name")
+	b.mustSet("name")
 	b.foo.name = name
 	return b
 }
 
 // WithAge sets age.
 func (b FooBuilder) WithAge(age sql.NullInt64) FooBuilder {
-	b.setOrPanic("age")
+	b.mustSet("age")
 	b.foo.age = age
 	return b
 }
 
 // WithValid sets valid.
 func (b FooBuilder) WithValid(valid bool, valid1 bool) FooBuilder {
-	b.setOrPanic("valid")
+	b.mustSet("valid")
 	if valid1 {
 		b.foo.valid = &valid
 	}
@@ -63,14 +61,14 @@ func (b FooBuilder) WithValid(valid bool, valid1 bool) FooBuilder {
 
 // WithURL sets url.
 func (b FooBuilder) WithURL(url string) FooBuilder {
-	b.setOrPanic("url")
+	b.mustSet("url")
 	b.foo.url = url
 	return b
 }
 
 // WithRealAge sets realAge.
 func (b FooBuilder) WithRealAge(realAge int64, valid bool) FooBuilder {
-	b.setOrPanic("realAge")
+	b.mustSet("realAge")
 	if valid {
 		b.foo.realAge = &realAge
 	}
@@ -79,21 +77,21 @@ func (b FooBuilder) WithRealAge(realAge int64, valid bool) FooBuilder {
 
 // WithBar sets bar.
 func (b FooBuilder) WithBar(bar Bar) FooBuilder {
-	b.setOrPanic("bar")
+	b.mustSet("bar")
 	b.foo.bar = bar
 	return b
 }
 
 // WithBars sets bars.
 func (b FooBuilder) WithBars(bars []Bar) FooBuilder {
-	b.setOrPanic("bars")
+	b.mustSet("bars")
 	b.foo.bars = bars
 	return b
 }
 
 // WithBarPtrs sets barPtrs.
 func (b FooBuilder) WithBarPtrs(barPtrs []*Bar, valid bool) FooBuilder {
-	b.setOrPanic("barPtrs")
+	b.mustSet("barPtrs")
 	if valid {
 		b.foo.barPtrs = barPtrs
 	}
@@ -102,51 +100,51 @@ func (b FooBuilder) WithBarPtrs(barPtrs []*Bar, valid bool) FooBuilder {
 
 // WithBarByString sets barByString.
 func (b FooBuilder) WithBarByString(barByString map[string]Bar) FooBuilder {
-	b.setOrPanic("barByString")
+	b.mustSet("barByString")
 	b.foo.barByString = barByString
 	return b
 }
 
 // WithStringByBar sets stringByBar.
 func (b FooBuilder) WithStringByBar(stringByBar map[Bar]string) FooBuilder {
-	b.setOrPanic("stringByBar")
+	b.mustSet("stringByBar")
 	b.foo.stringByBar = stringByBar
 	return b
 }
 
 // WithSliceBarByString sets sliceBarByString.
 func (b FooBuilder) WithSliceBarByString(sliceBarByString map[string][]Bar) FooBuilder {
-	b.setOrPanic("sliceBarByString")
+	b.mustSet("sliceBarByString")
 	b.foo.sliceBarByString = sliceBarByString
 	return b
 }
 
 // WithSliceBarPtrByString sets sliceBarPtrByString.
 func (b FooBuilder) WithSliceBarPtrByString(sliceBarPtrByString map[string][]*Bar) FooBuilder {
-	b.setOrPanic("sliceBarPtrByString")
+	b.mustSet("sliceBarPtrByString")
 	b.foo.sliceBarPtrByString = sliceBarPtrByString
 	return b
 }
 
 // WithBarPtrByString sets barPtrByString.
 func (b FooBuilder) WithBarPtrByString(barPtrByString map[string]*Bar) FooBuilder {
-	b.setOrPanic("barPtrByString")
+	b.mustSet("barPtrByString")
 	b.foo.barPtrByString = barPtrByString
 	return b
 }
 
 // WithStringByBarPtr sets stringByBarPtr.
 func (b FooBuilder) WithStringByBarPtr(stringByBarPtr map[*Bar]string) FooBuilder {
-	b.setOrPanic("stringByBarPtr")
+	b.mustSet("stringByBarPtr")
 	b.foo.stringByBarPtr = stringByBarPtr
 	return b
 }
 
 // Build returns Foo.
 func (b FooBuilder) Build() Foo {
-	for field, isSet := range b.fields {
-		if !isSet {
-			panic(fmt.Sprintf("builder.BuildErr: %q not set", field))
+	for i, field := range b.fields {
+		if !b.isSet(i) {
+			panic(fmt.Sprintf("builder: %q not set", field))
 		}
 	}
 	return b.foo
@@ -157,21 +155,23 @@ func (b FooBuilder) BuildPartial() Foo {
 	return b.foo
 }
 
-// setOrPanic sets the fields only if it has not yet been set. It will panic when calling it twice.
-func (b *FooBuilder) setOrPanic(field string) {
-	c := b.cloneFields()
-	if c[field] {
-		panic(fmt.Sprintf("builder.BuildErr: cannot set %q twice", field))
+func (b *FooBuilder) mustSet(field string) {
+	i := b.indexOf(field)
+	if b.isSet(i) {
+		panic(fmt.Sprintf("builder: set %q twice", field))
 	}
-	c[field] = true
-	b.fields = c
+	b.fieldsSet |= 1 << i
 }
 
-// cloneFields clone the fields to avoid mutation
-func (b FooBuilder) cloneFields() map[string]bool {
-	result := make(map[string]bool)
-	for k, v := range b.fields {
-		result[k] = v
+func (b FooBuilder) isSet(pos int) bool {
+	return (b.fieldsSet & (1 << pos)) == (1 << pos)
+}
+
+func (b FooBuilder) indexOf(field string) int {
+	for i, f := range b.fields {
+		if f == field {
+			return i
+		}
 	}
-	return result
+	panic(fmt.Sprintf("builder: field: %q not found", field))
 }

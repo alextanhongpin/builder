@@ -4,29 +4,40 @@ package main
 import "fmt"
 
 type SimpleBuilder struct {
-	simple Simple
-	fields map[string]bool
+	simple    Simple
+	fields    []string
+	fieldsSet uint64
 }
 
-func NewSimpleBuilder() *SimpleBuilder {
-	return &SimpleBuilder{fields: map[string]bool{
-		"age":  false,
-		"name": false,
-	}}
+func NewSimpleBuilder(additionalFields ...string) *SimpleBuilder {
+	for _, field := range additionalFields {
+		if field == "" {
+			panic("builder: empty string in constructor")
+		}
+	}
+	exists := make(map[string]bool)
+	fields := append([]string{"name"}, additionalFields...)
+	for _, field := range fields {
+		if exists[field] {
+			panic(fmt.Sprintf("builder: duplicate field %q", field))
+		}
+		exists[field] = true
+	}
+	return &SimpleBuilder{fields: fields}
 }
 
 // WithName sets name.
 func (b SimpleBuilder) WithName(name string) SimpleBuilder {
-	b.setOrPanic("name")
+	b.mustSet("name")
 	b.simple.name = name
 	return b
 }
 
 // Build returns Simple.
 func (b SimpleBuilder) Build() Simple {
-	for field, isSet := range b.fields {
-		if !isSet {
-			panic(fmt.Sprintf("builder.BuildErr: %q not set", field))
+	for i, field := range b.fields {
+		if !b.isSet(i) {
+			panic(fmt.Sprintf("builder: %q not set", field))
 		}
 	}
 	return b.simple
@@ -37,21 +48,23 @@ func (b SimpleBuilder) BuildPartial() Simple {
 	return b.simple
 }
 
-// setOrPanic sets the fields only if it has not yet been set. It will panic when calling it twice.
-func (b *SimpleBuilder) setOrPanic(field string) {
-	c := b.cloneFields()
-	if c[field] {
-		panic(fmt.Sprintf("builder.BuildErr: cannot set %q twice", field))
+func (b *SimpleBuilder) mustSet(field string) {
+	i := b.indexOf(field)
+	if b.isSet(i) {
+		panic(fmt.Sprintf("builder: set %q twice", field))
 	}
-	c[field] = true
-	b.fields = c
+	b.fieldsSet |= 1 << i
 }
 
-// cloneFields clone the fields to avoid mutation
-func (b SimpleBuilder) cloneFields() map[string]bool {
-	result := make(map[string]bool)
-	for k, v := range b.fields {
-		result[k] = v
+func (b SimpleBuilder) isSet(pos int) bool {
+	return (b.fieldsSet & (1 << pos)) == (1 << pos)
+}
+
+func (b SimpleBuilder) indexOf(field string) int {
+	for i, f := range b.fields {
+		if f == field {
+			return i
+		}
 	}
-	return result
+	panic(fmt.Sprintf("builder: field: %q not found", field))
 }
