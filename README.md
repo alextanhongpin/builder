@@ -2,6 +2,18 @@
 
 Generate golang builders.
 
+## Why not constructor?
+
+- use constructor when you need to ensure all fields needs to be valid for the creation of your object
+- you can still do the same for builder by building the object, and validating them after it is build
+- useful when you have many fields
+- chaining each method can be done on a new line, keeping it readable, sortable
+- constructor values are mandatory, builders are not. But the generated code checks if you have invoked all the setters and will panic if one of them is not called
+- you can also call builder with build partial, useful in tests when you need to test only certain fields
+- builder method are dumb setters, it may sound like a disadvantage, but actually it is an advantage. You dont always want to build your entity as a complete object, sometimes you just need to load all entity fields from the database. Allowing such flexibility on your domain entity by allowing all setters is not a good pattern. Domain entity should have private fields with public getters, but setters only that guards against invariants. 
+- builder separate setters from your entity
+- dont mix constructor vs builder, constructor is useful when you need to create valid entity, builder allows you to set reconstruct the enity from existing data. Constructor might evolve over time to handle new or old fields vs business logic, which could break old data im db (which could be created externally outside the application)
+- builder is also useful when you need to mass set private fields, which are not exported. Otherwise, you could just build the structs
 
 ## Installation
 
