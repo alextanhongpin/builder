@@ -14,6 +14,7 @@ Generate golang builders.
 - builder separate setters from your entity
 - dont mix constructor vs builder, constructor is useful when you need to create valid entity, builder allows you to set reconstruct the enity from existing data. Constructor might evolve over time to handle new or old fields vs business logic, which could break old data im db (which could be created externally outside the application)
 - builder is also useful when you need to mass set private fields, which are not exported. Otherwise, you could just build the structs
+- using constructor guarantees compile time checking for missing fields. Using builder does not, and it can only be checked during runtime. One way to make runtime check more guaranteed to capture errors from missing field is to run the code in the init function. 
 
 ## Installation
 
