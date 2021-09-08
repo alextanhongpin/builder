@@ -325,7 +325,7 @@ func generateIndexOfFunc(f *jen.File, structName string) {
 }
 
 func generateSortedStructFields(T types.Type) ([]loader.StructField, error) {
-	fields, err := loader.ExtractStructFields((T).(*types.Struct))
+	fields, err := loader.NewStructFields((T).(*types.Struct))
 	if err != nil {
 		return nil, err
 	}
