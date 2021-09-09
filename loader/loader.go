@@ -17,7 +17,7 @@ func Walk(visitor Visitor, T types.Type) bool {
 		return next
 	}
 
-	switch u := T.Underlying().(type) {
+	switch u := T.(type) {
 	case *types.Named:
 		return Walk(visitor, u.Underlying())
 	case *types.Pointer:
@@ -34,13 +34,19 @@ func Walk(visitor Visitor, T types.Type) bool {
 }
 
 type Option struct {
-	In         string
-	Out        string
-	PkgName    string
-	PkgPath    string
-	Prefix     string
-	StructName string
-	Type       types.Type
+	In      string
+	Out     string
+	PkgName string
+	PkgPath string
+	Prefix  string
+	Prune   bool
+	Items   []OptionItem
+}
+
+type OptionItem struct {
+	Name string
+	Type types.Type
+	Path string
 }
 
 type Generator func(opt Option) error
@@ -50,7 +56,7 @@ func New(fn Generator) error {
 	outp := flag.String("out", "", "the output directory")
 	pkgp := flag.String("pkg", "github.com", "the package or package prefix path")
 	prefixp := flag.String("prefix", "", "the generated field name prefix, e.g. Get")
-	prunep := flag.Bool("prune", true, "whether to prune the old file before generating a new one")
+	prunep := flag.Bool("prune", true, "whether to remove the old file before generating a new one")
 	structp := flag.String("type", "", "the target struct name")
 	flag.Parse()
 
@@ -59,15 +65,32 @@ func New(fn Generator) error {
 	pkgPath := pkg.PkgPath                     // Specify the config packages.NeedName to get this value.
 	pkgName := pkg.Name                        // main
 
-	// Allows -type=Foo,Bar
-	structNames := strings.Split(*structp, ",")
-	for _, structName := range structNames {
-		out := FileNameFromTypeName(*inp, *outp, structName)
+	pruneFileIfExists := func(path string) {
 		if *prunep {
-			if err := os.Remove(out); err != nil && !os.IsNotExist(err) {
-				fmt.Printf("failed to remove %s: %s\n", out, err)
+			// File may not exists yet, ignore.
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				fmt.Printf("error removing file %s: %s\n", path, err)
 			}
 		}
+	}
+
+	// Allows -type=Foo,Bar
+	structNames := strings.Split(*structp, ",")
+
+	out := FileNameFromTypeName(*inp, *outp, FileName(*inp))
+	pruneFileIfExists(out)
+
+	opt := Option{
+		PkgName: pkgName,
+		PkgPath: pkgPath,
+		Prefix:  *prefixp,
+		Out:     out,
+		In:      in,
+	}
+
+	for _, structName := range structNames {
+		path := FileNameFromTypeName(*inp, *outp, structName)
+		pruneFileIfExists(path)
 
 		obj := pkg.Types.Scope().Lookup(structName)
 		if obj == nil {
@@ -85,17 +108,12 @@ func New(fn Generator) error {
 			return fmt.Errorf("%v is not a struct", obj)
 		}
 
-		if err := fn(Option{
-			PkgName:    pkgName,
-			PkgPath:    pkgPath,
-			Prefix:     *prefixp,
-			Out:        out,
-			In:         in,
-			StructName: structName,
-			Type:       obj.Type().Underlying(),
-		}); err != nil {
-			return err
-		}
+		opt.Items = append(opt.Items, OptionItem{
+			Path: path,
+			Type: obj.Type().Underlying(),
+			Name: structName,
+		})
 	}
-	return nil
+
+	return fn(opt)
 }
