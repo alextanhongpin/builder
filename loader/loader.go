@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/types"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -51,13 +52,44 @@ type OptionItem struct {
 
 type Generator func(opt Option) error
 
+type TypeNames struct {
+	cache map[string]bool
+}
+
+func (t TypeNames) String() string {
+	return strings.Join(t.Items(), ",")
+}
+
+func (t *TypeNames) Set(val string) error {
+	result := strings.Split(val, ",")
+	for _, v := range result {
+		t.cache[strings.TrimSpace(v)] = true
+	}
+	return nil
+}
+
+func (t TypeNames) Items() []string {
+	var result []string
+	for k := range t.cache {
+		result = append(result, k)
+	}
+	sort.Strings(result)
+	return result
+}
+
+var typeNames TypeNames
+
+func init() {
+	typeNames = TypeNames{cache: make(map[string]bool)}
+}
+
 func New(fn Generator) error {
 	inp := flag.String("in", os.Getenv("GOFILE"), "the input file, defaults to the file with the go:generate comment")
 	outp := flag.String("out", "", "the output directory")
 	pkgp := flag.String("pkg", "github.com", "the package or package prefix path")
 	prefixp := flag.String("prefix", "", "the generated field name prefix, e.g. Get")
 	prunep := flag.Bool("prune", true, "whether to remove the old file before generating a new one")
-	structp := flag.String("type", "", "the target struct name")
+	flag.Var(&typeNames, "type", "the target struct name")
 	flag.Parse()
 
 	in := fullPath(*inp)
@@ -74,9 +106,6 @@ func New(fn Generator) error {
 		}
 	}
 
-	// Allows -type=Foo,Bar
-	structNames := strings.Split(*structp, ",")
-
 	out := FileNameFromTypeName(*inp, *outp, FileName(*inp))
 	pruneFileIfExists(out)
 
@@ -88,7 +117,7 @@ func New(fn Generator) error {
 		In:      in,
 	}
 
-	for _, structName := range structNames {
+	for _, structName := range typeNames.Items() {
 		path := FileNameFromTypeName(*inp, *outp, structName)
 		pruneFileIfExists(path)
 
