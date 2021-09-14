@@ -2,6 +2,9 @@
 
 Generate golang builders.
 
+Similar project: 
+- [mapper](https://github.com/alextanhongpin/mapper): convert struct to struct and more
+
 ## Why not constructor?
 
 - use constructor when you need to ensure all fields needs to be valid for the creation of your object
