@@ -4,6 +4,7 @@ Generate golang builders.
 
 Similar project: 
 - [mapper](https://github.com/alextanhongpin/mapper): convert struct to struct and more
+- [getter](https://github.com/alextanhongpin/getter): generate getters for private struct fields, with inlining
 
 ## Why not constructor?
 
