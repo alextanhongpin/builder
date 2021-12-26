@@ -140,3 +140,81 @@ func main() {
 	log.Println(builder.Build())                                    // This will panic, since "name" and "age" is not set yet.
 }
 ```
+
+
+## V2
+
+Better way for setting fields
+
+```go
+// You can edit this code!
+// Click here and start typing.
+package main
+
+import (
+	"errors"
+)
+
+func main() {
+	b := &Builder{
+		fields: make(map[string]int),
+	}
+	b.Register("Name")
+	b.Register("Age")
+	b.Register("MaritalStatus")
+	b.Set("MaritalStatus")
+	b.SetName("john").SetAge(10).Build()
+}
+
+type User struct {
+	Name string
+	Age  int
+}
+type Builder struct {
+	fields map[string]int
+	user   User
+	set    int
+	// Make options such as panic on setting twice etc configurable
+}
+
+func (b *Builder) SetName(name string) *Builder {
+	b.user.Name = name
+	b.set |= 1 << b.fields["Name"]
+	return b
+}
+
+func (b *Builder) SetAge(age int) *Builder {
+	b.user.Age = age
+	b.set |= 1 << b.fields["Age"]
+	return b
+}
+
+func (b *Builder) Set(name string) bool {
+	n, ok := b.fields[name]
+	if !ok {
+		return false
+	}
+	b.set |= 1 << n
+	return true
+}
+
+func (b *Builder) Register(field string) error {
+	if _, ok := b.fields[field]; ok {
+		return errors.New("field exists")
+	}
+	b.fields[field] = len(b.fields)
+	return nil
+}
+
+func (b *Builder) Build() User {
+	all := 1<<len(b.fields) - 1
+	if d := (all - b.set) >> 1; d > 0 {
+		for field, v := range b.fields {
+			if v == d {
+				panic("field " + field + " is not set")
+			}
+		}
+	}
+	return b.user
+}
+```
