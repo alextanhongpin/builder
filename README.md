@@ -144,7 +144,7 @@ func main() {
 
 ## V2
 
-Better way for setting fields
+Better way for setting fields. Also, the complete builder with all fields should also be generated as comments so that users can copy and paste the implementation.
 
 ```go
 // You can edit this code!
@@ -153,6 +153,8 @@ package main
 
 import (
 	"errors"
+	"sort"
+	"strings"
 )
 
 func main() {
@@ -163,27 +165,30 @@ func main() {
 	b.Register("Age")
 	b.Register("MaritalStatus")
 	b.Set("MaritalStatus")
-	b.SetName("john").SetAge(10).Build()
+	b.
+		WithName("john").
+		WithAge(10).
+		Build()
 }
 
 type User struct {
 	Name string
 	Age  int
 }
+
 type Builder struct {
 	fields map[string]int
 	user   User
 	set    int
-	// Make options such as panic on setting twice etc configurable
 }
 
-func (b *Builder) SetName(name string) *Builder {
+func (b *Builder) WithName(name string) *Builder {
 	b.user.Name = name
 	b.set |= 1 << b.fields["Name"]
 	return b
 }
 
-func (b *Builder) SetAge(age int) *Builder {
+func (b *Builder) WithAge(age int) *Builder {
 	b.user.Age = age
 	b.set |= 1 << b.fields["Age"]
 	return b
@@ -208,12 +213,17 @@ func (b *Builder) Register(field string) error {
 
 func (b *Builder) Build() User {
 	all := 1<<len(b.fields) - 1
-	if d := (all - b.set) >> 1; d > 0 {
-		for field, v := range b.fields {
-			if v == d {
-				panic("field " + field + " is not set")
+	if all != b.set {
+		var fields []string
+		for field, n := range b.fields {
+			v := 1 << n
+			if b.set&v == v {
+				continue
 			}
+			fields = append(fields, field)
 		}
+		sort.Strings(fields)
+		panic("field " + strings.Join(fields, ", ") + " is not set")
 	}
 	return b.user
 }
