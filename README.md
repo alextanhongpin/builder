@@ -9,6 +9,7 @@ Similar project:
 ## Why not constructor?
 
 - use constructor when you need to ensure all fields needs to be valid for the creation of your object
+- use constructor to validate required fields at compile time
 - you can still do the same for builder by building the object, and validating them after it is build
 - useful when you have many fields
 - chaining each method can be done on a new line, keeping it readable, sortable
@@ -152,7 +153,7 @@ Better way for setting fields. Also, the complete builder with all fields should
 package main
 
 import (
-	"errors"
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -205,15 +206,14 @@ func (b *Builder) Set(name string) bool {
 
 func (b *Builder) Register(field string) error {
 	if _, ok := b.fields[field]; ok {
-		return errors.New("field exists")
+		return fmt.Errorf("field %q exists", field)
 	}
 	b.fields[field] = len(b.fields)
 	return nil
 }
 
 func (b *Builder) Build() User {
-	all := 1<<len(b.fields) - 1
-	if all != b.set {
+	if b.IsPartial() {
 		var fields []string
 		for field, n := range b.fields {
 			v := 1 << n
@@ -226,5 +226,14 @@ func (b *Builder) Build() User {
 		panic("field " + strings.Join(fields, ", ") + " is not set")
 	}
 	return b.user
+}
+
+func (b *Builder) BuildPartial() User {
+	return b.user
+}
+
+func (b *Builder) IsPartial() bool {
+	all := 1<<len(b.fields) - 1
+	return all != b.set
 }
 ```
