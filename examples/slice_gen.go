@@ -6,54 +6,45 @@ import "fmt"
 
 type AuthorBuilder struct {
 	author    Author
-	fields    []string
+	fields    map[string]int
 	fieldsSet uint64
 }
 
-func NewAuthorBuilder(additionalFields ...string) *AuthorBuilder {
-	for _, field := range additionalFields {
-		if field == "" {
-			panic("builder: empty string in constructor")
-		}
-	}
-	exists := make(map[string]bool)
-	fields := append([]string{"user", "books", "releases"}, additionalFields...)
-	for _, field := range fields {
-		if exists[field] {
-			panic(fmt.Errorf("builder: duplicate field %q", field))
-		}
-		exists[field] = true
+func NewAuthorBuilder() *AuthorBuilder {
+	fields := make(map[string]int)
+	for i, field := range []string{"user", "books", "releases"} {
+		fields[field] = i
 	}
 	return &AuthorBuilder{fields: fields}
 }
 
 // WithUser sets user.
 func (b AuthorBuilder) WithUser(user User, valid bool) AuthorBuilder {
-	b.mustSet("user")
 	if valid {
 		b.author.user = &user
 	}
+	b.Set("user")
 	return b
 }
 
 // WithBooks sets books.
 func (b AuthorBuilder) WithBooks(books []Book) AuthorBuilder {
-	b.mustSet("books")
 	b.author.books = books
+	b.Set("books")
 	return b
 }
 
 // WithReleases sets releases.
 func (b AuthorBuilder) WithReleases(releases []*Year) AuthorBuilder {
-	b.mustSet("releases")
 	b.author.releases = releases
+	b.Set("releases")
 	return b
 }
 
 // Build returns Author.
 func (b AuthorBuilder) Build() Author {
-	for i, field := range b.fields {
-		if !b.isSet(i) {
+	for field := range b.fields {
+		if !b.IsSet(field) {
 			panic(fmt.Errorf("builder: %q not set", field))
 		}
 	}
@@ -65,23 +56,25 @@ func (b AuthorBuilder) BuildPartial() Author {
 	return b.author
 }
 
-func (b *AuthorBuilder) mustSet(field string) {
-	i := b.indexOf(field)
-	if b.isSet(i) {
-		panic(fmt.Errorf("builder: set %q twice", field))
+func (b *AuthorBuilder) Set(field string) bool {
+	n, ok := b.fields[field]
+	if !ok {
+		return false
 	}
-	b.fieldsSet |= 1 << i
+	b.fieldsSet |= 1 << n
+	return true
+
 }
 
-func (b AuthorBuilder) isSet(pos int) bool {
+func (b AuthorBuilder) IsSet(field string) bool {
+	pos := b.fields[field]
 	return (b.fieldsSet & (1 << pos)) == (1 << pos)
 }
 
-func (b AuthorBuilder) indexOf(field string) int {
-	for i, f := range b.fields {
-		if f == field {
-			return i
-		}
+func (b *AuthorBuilder) Register(field string) error {
+	if _, ok := b.fields[field]; ok {
+		return fmt.Errorf("field %q already registered", field)
 	}
-	panic(fmt.Errorf("builder: field: %q not found", field))
+	b.fields[field] = len(b.fields)
+	return nil
 }

@@ -66,8 +66,7 @@ func generateStructFromFields(opt loader.Option) error {
 		generateBuildPartialFunc(f, structName)
 		generateMustSetFunc(f, structName)
 		generateIsSetFunc(f, structName)
-		generateIndexOfFunc(f, structName)
-
+		generateRegisterFunc(f, structName)
 	}
 	if err := f.Save(out); err != nil { // e.g. main_gen.go
 		return err
@@ -81,38 +80,32 @@ func generateBuilder(f *jen.File, structName string) {
 	//
 	// type FooBuilder struct {
 	//   foo Foo
-	//   fields []string
+	//   fields map[string]int
 	//   fieldsSet uint64
 	// }
 
 	f.Type().Id(generateBuilderName(structName)).Struct(
 		Id(loader.LowerFirst(structName)).Id(structName),
-		Id("fields").Index().String(),
+		Id("fields").Map(String()).Int(),
 		Id("fieldsSet").Uint64(),
 	).Line()
 }
 
 func generateBuilderConstructor(f *jen.File, structName string, fields []loader.StructField) {
-	// Output:
-	//
-	// func NewFooBuilder(additionalFields ...string) *FooBuilder {
-	//   for _, s := range additionalFields {
-	//     if s == "" {
-	//       panic(`builder: "" in constructor`)
-	//     }
-	//   }
-	//   exists := make(map[string]bool)
-	//   fields := append([]string{"name"}, additionalFields...)
-	//     for _, field := range fields {
-	//     if exists[field] {
-	//       panic(fmt.Sprintf("builder: duplicate field %q", field))
-	//     }
-	//     exists[field] = true
-	//   }
-	//   return &FooBuilder{
-	//     fields: fields,
-	//   }
-	// }
+	/*
+		 Output:
+
+		 func NewFooBuilder() *FooBuilder {
+			 fields := make(map[string]int)
+				 for i, field := range []string{"name", "age"}{
+					 fields[field] = i
+				 }
+			 }
+			 return &FooBuilder{
+				 fields: fields,
+			 }
+		 }
+	*/
 
 	values := make([]Code, len(fields))
 	for i, field := range fields {
@@ -120,19 +113,10 @@ func generateBuilderConstructor(f *jen.File, structName string, fields []loader.
 	}
 
 	builderName := generateBuilderName(structName)
-	f.Func().Id(fmt.Sprintf("New%s", builderName)).Params(Id("additionalFields").Op("...").String()).Op("*").Id(builderName).Block(
-		For(List(Id("_"), Id("field")).Op(":=").Range().Id("additionalFields")).Block(
-			If(Id("field").Op("==").Lit("")).Block(
-				Panic(Lit(`builder: empty string in constructor`)),
-			),
-		),
-		Id("exists").Op(":=").Make(Map(String()).Bool()),
-		Id("fields").Op(":=").Append(Index().String().Values(values...), Id("additionalFields").Op("...")),
-		For(List(Id("_"), Id("field")).Op(":=").Range().Id("fields")).Block(
-			If(Id("exists").Index(Id("field"))).Block(
-				Panic(Qual("fmt", "Errorf").Call(Lit("builder: duplicate field %q"), Id("field"))),
-			),
-			Id("exists").Index(Id("field")).Op("=").Lit(true),
+	f.Func().Id(fmt.Sprintf("New%s", builderName)).Params().Op("*").Id(builderName).Block(
+		Id("fields").Op(":=").Make(Map(String()).Int()),
+		For(List(Id("i"), Id("field")).Op(":=").Range().Index().String().Values(values...)).Block(
+			Id("fields").Index(Id("field")).Op("=").Id("i"),
 		),
 		Return(Op("&").Id(builderName).Values(Dict{
 			Id("fields"): Id("fields"),
@@ -144,8 +128,8 @@ func generateWither(f *jen.File, pkgPath, structName string, field loader.Struct
 	// Output:
 	// WithName sets name.
 	// func (b FooBuilder) WithName(name string) FooBuilder {
-	//   b.mustSet("name")
 	// 	 b.foo.name = name
+	//   b.Set("name")
 	//   return b
 	// }
 
@@ -160,8 +144,8 @@ func generateWither(f *jen.File, pkgPath, structName string, field loader.Struct
 			Params(Id(loader.LowerFirst(field.Name)).Add(generateType(field.Type))). // name string
 			Id(builderName).                                                         // Return type: FooBuilder
 			Block(
-			Id("b").Dot("mustSet").Call(Lit(loader.LowerFirst(field.Name))),
 			Id(shortName).Dot(loader.LowerFirst(structName)).Dot(field.Name).Op("=").Id(loader.LowerFirst(field.Name)),
+			Id("b").Dot("Set").Call(Lit(field.Name)),
 			Return(Id(shortName)),
 		).Line()
 }
@@ -170,10 +154,10 @@ func generateWitherPointer(f *jen.File, pkgPath, structName string, field loader
 	// Output:
 	// WithName sets name.
 	// func (b FooBuilder) WithName(name string, valid bool) FooBuilder {
-	//   b.mustSet("name")
 	//   if valid {
 	//     b.foo.name = name
 	//   }
+	//   b.Set("name")
 	//   return b
 	// }
 
@@ -196,7 +180,6 @@ func generateWitherPointer(f *jen.File, pkgPath, structName string, field loader
 		).
 		Id(builderName). // Return type: FooBuilder
 		Block(
-			Id("b").Dot("mustSet").Call(Lit(loader.LowerFirst(field.Name))),
 			If(Id(validVar)).Block(
 				Id(shortName).Dot(loader.LowerFirst(structName)).Dot(field.Name).Op("=").Do(func(s *Statement) {
 					if isPointer(field.Type) {
@@ -204,6 +187,7 @@ func generateWitherPointer(f *jen.File, pkgPath, structName string, field loader
 					}
 				}).Id(loader.LowerFirst(field.Name)),
 			),
+			Id("b").Dot("Set").Call(Lit(field.Name)),
 			Return(Id(shortName)),
 		).Line()
 }
@@ -213,7 +197,7 @@ func generateBuildFunc(f *jen.File, structName string) {
 	//
 	// // Build returns Foo.
 	// func (b FooBuilder) Build() Foo {
-	//   for i, field := range b.fields {
+	//   for field := range b.fields {
 	//     if !b.isSet(i) {
 	//       panic(fmt.Sprintf("builder: %q not set", field)
 	//     }
@@ -230,9 +214,9 @@ func generateBuildFunc(f *jen.File, structName string) {
 				Id(structName). // Return type: Foo
 				Block(
 			For(
-				List(Id("i"), Id("field")).Op(":=").Range().Id("b").Dot("fields"),
+				Id("field").Op(":=").Range().Id("b").Dot("fields"),
 			).Block(
-				If(Op("!").Id("b").Dot("isSet").Call(Id("i"))).Block(
+				If(Op("!").Id("b").Dot("IsSet").Call(Id("field"))).Block(
 					Panic(Qual("fmt", "Errorf").Call(Lit("builder: %q not set"), Id("field"))),
 				),
 			),
@@ -261,34 +245,41 @@ func generateBuildPartialFunc(f *jen.File, structName string) {
 }
 
 func generateMustSetFunc(f *jen.File, structName string) {
-	// Output:
-	//
-	// func (b *FooBuilder) mustSet(field string) {
-	//   i := b.indexOf(field)
-	//   if b.isSet(i) {
-	//     panic(fmt.Sprintf("builder: set %q twice", field))
-	//   }
-	//   b.fieldsSet |= 1 << i
-	// }
+	/*
+		 Output:
+
+		 func (b *FooBuilder) Set(field string) bool {
+			 n, ok := b.fields[field]
+			 if !ok {
+				 return false
+			 }
+			 b.fieldsSet |= 1 << n
+			 return true
+		 }
+	*/
 
 	builderName := generateBuilderName(structName)
 	shortName := "b"
 	f.Func().
 		Params(Id(shortName).Op("*").Id(builderName)). // (b FooBuilder)
-		Id("mustSet").Params(Id("field").String()).    // mustSet(field string)
+		Id("Set").Params(Id("field").String()).        // mustSet(field string)
+		Id("bool").                                    // Return type: bool
 		Block(
-			Id("i").Op(":=").Id("b").Dot("indexOf").Call(Id("field")),
-			If(Id("b").Dot("isSet").Call(Id("i"))).Block(
-				Panic(Qual("fmt", "Errorf").Call(Lit("builder: set %q twice"), Id("field"))),
+			List(Id("n"), Id("ok")).Op(":=").Id("b").Dot("fields").Index(Id("field")),
+			If(Op("!").Id("ok").Block(
+				Return(Lit(false)),
 			),
-			Id("b").Dot("fieldsSet").Op("|=").Lit(1).Op("<<").Id("i"),
+				Id("b").Dot("fieldsSet").Op("|=").Lit(1).Op("<<").Id("n"),
+				Return(Lit(true)),
+			).Line(),
 		).Line()
 }
 
 func generateIsSetFunc(f *jen.File, structName string) {
 	// Output:
 	//
-	// func (b SimpleBuilder) isSet(pos int) bool {
+	// func (b SimpleBuilder) IsSet(field string) bool {
+	//   pos := b.fields[field]
 	//   return (b.fieldsSet & (1 << pos)) == (1 << pos)
 	// }
 
@@ -297,41 +288,42 @@ func generateIsSetFunc(f *jen.File, structName string) {
 
 	f.Func().Params(
 		Id(shortName).Id(builderName), // (b FooBuilder)
-	).Id("isSet").Params(Id("pos").Int()). // isSet(pos int)
-						Bool(). // bool
-						Block(
+	).Id("IsSet").Params(Id("field").String()). // IsSet(field string)
+							Bool(). // bool
+							Block(
+			Id("pos").Op(":=").Id("b").Dot("fields").Index(Id("field")),
 			Return(Parens(Id("b").Dot("fieldsSet").Op("&").Parens(Lit(1).Op("<<").Id("pos"))).Op("==").Parens(Lit(1).Op("<<").Id("pos"))),
 		).Line()
 }
 
-func generateIndexOfFunc(f *jen.File, structName string) {
-	// Output:
-	//
-	// func (b FooBuilder) indexOf(field string) int {
-	//   for i, f := range b.fields {
-	//     if f == field {
-	//       return i
-	//     }
-	//   }
-	//  panic(fmt.Sprintf("builder: field %q not found", field))
-	// }
+func generateRegisterFunc(f *jen.File, structName string) {
+	/*
+		Output:
+
+		func (b *FooBuilder) Register(field string) error {
+			if _, ok := b.fields[field]; ok {
+				return fmt.Errorf("field %q already registered", field)
+			}
+			b.fields[field] = len(b.fields)
+			return nil
+		}
+	*/
 
 	builderName := generateBuilderName(structName)
 	shortName := "b"
-
 	f.Func().Params(
-		Id(shortName).Id(builderName), // (b FooBuilder)
-	).Id("indexOf").Params(Id("field").String()). // indexOf(field string)
-							Int(). // int
+		Id(shortName).Op("*").Id(builderName), // (b *FooBuilder)
+	).Id("Register").Params(Id("field").String()). // Register(field string)
+							Id("error"). // error
 							Block(
-			For(
-				List(Id("i"), Id("f")).Op(":=").Range().Id("b").Dot("fields").Block(
-					If(Id("f").Op("==").Id("field")).Block(
-						Return(Id("i")),
-					),
-				),
+			If(
+				List(Id("_"), Id("ok")).Op(":=").Id("b").Dot("fields").Index(Id("field")),
+				Id("ok"),
+			).Block(
+				Return(Qual("fmt", "Errorf").Call(Lit("field %q already registered"), Id("field"))),
 			),
-			Panic(Qual("fmt", "Errorf").Call(Lit("builder: field: %q not found"), Id("field"))),
+			Id("b").Dot("fields").Index(Id("field")).Op("=").Len(Id("b").Dot("fields")),
+			Return(Nil()),
 		).Line()
 }
 

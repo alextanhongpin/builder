@@ -11,52 +11,43 @@ import (
 
 type BookBuilder struct {
 	book      Book
-	fields    []string
+	fields    map[string]int
 	fieldsSet uint64
 }
 
-func NewBookBuilder(additionalFields ...string) *BookBuilder {
-	for _, field := range additionalFields {
-		if field == "" {
-			panic("builder: empty string in constructor")
-		}
-	}
-	exists := make(map[string]bool)
-	fields := append([]string{"id", "name", "extra"}, additionalFields...)
-	for _, field := range fields {
-		if exists[field] {
-			panic(fmt.Errorf("builder: duplicate field %q", field))
-		}
-		exists[field] = true
+func NewBookBuilder() *BookBuilder {
+	fields := make(map[string]int)
+	for i, field := range []string{"id", "name", "extra"} {
+		fields[field] = i
 	}
 	return &BookBuilder{fields: fields}
 }
 
 // WithID sets id.
 func (b BookBuilder) WithID(id uuid.UUID) BookBuilder {
-	b.mustSet("id")
 	b.book.id = id
+	b.Set("id")
 	return b
 }
 
 // WithName sets name.
 func (b BookBuilder) WithName(name sql.NullString) BookBuilder {
-	b.mustSet("name")
 	b.book.name = name
+	b.Set("name")
 	return b
 }
 
 // WithExtra sets extra.
 func (b BookBuilder) WithExtra(extra json.RawMessage) BookBuilder {
-	b.mustSet("extra")
 	b.book.extra = extra
+	b.Set("extra")
 	return b
 }
 
 // Build returns Book.
 func (b BookBuilder) Build() Book {
-	for i, field := range b.fields {
-		if !b.isSet(i) {
+	for field := range b.fields {
+		if !b.IsSet(field) {
 			panic(fmt.Errorf("builder: %q not set", field))
 		}
 	}
@@ -68,23 +59,25 @@ func (b BookBuilder) BuildPartial() Book {
 	return b.book
 }
 
-func (b *BookBuilder) mustSet(field string) {
-	i := b.indexOf(field)
-	if b.isSet(i) {
-		panic(fmt.Errorf("builder: set %q twice", field))
+func (b *BookBuilder) Set(field string) bool {
+	n, ok := b.fields[field]
+	if !ok {
+		return false
 	}
-	b.fieldsSet |= 1 << i
+	b.fieldsSet |= 1 << n
+	return true
+
 }
 
-func (b BookBuilder) isSet(pos int) bool {
+func (b BookBuilder) IsSet(field string) bool {
+	pos := b.fields[field]
 	return (b.fieldsSet & (1 << pos)) == (1 << pos)
 }
 
-func (b BookBuilder) indexOf(field string) int {
-	for i, f := range b.fields {
-		if f == field {
-			return i
-		}
+func (b *BookBuilder) Register(field string) error {
+	if _, ok := b.fields[field]; ok {
+		return fmt.Errorf("field %q already registered", field)
 	}
-	panic(fmt.Errorf("builder: field: %q not found", field))
+	b.fields[field] = len(b.fields)
+	return nil
 }

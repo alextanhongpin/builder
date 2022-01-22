@@ -6,59 +6,50 @@ import "fmt"
 
 type UserBuilder struct {
 	user      User
-	fields    []string
+	fields    map[string]int
 	fieldsSet uint64
 }
 
-func NewUserBuilder(additionalFields ...string) *UserBuilder {
-	for _, field := range additionalFields {
-		if field == "" {
-			panic("builder: empty string in constructor")
-		}
-	}
-	exists := make(map[string]bool)
-	fields := append([]string{"name", "age", "married", "hobbies"}, additionalFields...)
-	for _, field := range fields {
-		if exists[field] {
-			panic(fmt.Errorf("builder: duplicate field %q", field))
-		}
-		exists[field] = true
+func NewUserBuilder() *UserBuilder {
+	fields := make(map[string]int)
+	for i, field := range []string{"name", "age", "married", "hobbies"} {
+		fields[field] = i
 	}
 	return &UserBuilder{fields: fields}
 }
 
 // WithName sets name.
 func (b UserBuilder) WithName(name string) UserBuilder {
-	b.mustSet("name")
 	b.user.name = name
+	b.Set("name")
 	return b
 }
 
 // WithAge sets age.
 func (b UserBuilder) WithAge(age int64) UserBuilder {
-	b.mustSet("age")
 	b.user.age = age
+	b.Set("age")
 	return b
 }
 
 // WithMarried sets married.
 func (b UserBuilder) WithMarried(married bool) UserBuilder {
-	b.mustSet("married")
 	b.user.married = married
+	b.Set("married")
 	return b
 }
 
 // WithHobbies sets hobbies.
 func (b UserBuilder) WithHobbies(hobbies []string) UserBuilder {
-	b.mustSet("hobbies")
 	b.user.hobbies = hobbies
+	b.Set("hobbies")
 	return b
 }
 
 // Build returns User.
 func (b UserBuilder) Build() User {
-	for i, field := range b.fields {
-		if !b.isSet(i) {
+	for field := range b.fields {
+		if !b.IsSet(field) {
 			panic(fmt.Errorf("builder: %q not set", field))
 		}
 	}
@@ -70,23 +61,25 @@ func (b UserBuilder) BuildPartial() User {
 	return b.user
 }
 
-func (b *UserBuilder) mustSet(field string) {
-	i := b.indexOf(field)
-	if b.isSet(i) {
-		panic(fmt.Errorf("builder: set %q twice", field))
+func (b *UserBuilder) Set(field string) bool {
+	n, ok := b.fields[field]
+	if !ok {
+		return false
 	}
-	b.fieldsSet |= 1 << i
+	b.fieldsSet |= 1 << n
+	return true
+
 }
 
-func (b UserBuilder) isSet(pos int) bool {
+func (b UserBuilder) IsSet(field string) bool {
+	pos := b.fields[field]
 	return (b.fieldsSet & (1 << pos)) == (1 << pos)
 }
 
-func (b UserBuilder) indexOf(field string) int {
-	for i, f := range b.fields {
-		if f == field {
-			return i
-		}
+func (b *UserBuilder) Register(field string) error {
+	if _, ok := b.fields[field]; ok {
+		return fmt.Errorf("field %q already registered", field)
 	}
-	panic(fmt.Errorf("builder: field: %q not found", field))
+	b.fields[field] = len(b.fields)
+	return nil
 }

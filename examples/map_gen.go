@@ -9,52 +9,43 @@ import (
 
 type CacheBuilder struct {
 	cache     Cache
-	fields    []string
+	fields    map[string]int
 	fieldsSet uint64
 }
 
-func NewCacheBuilder(additionalFields ...string) *CacheBuilder {
-	for _, field := range additionalFields {
-		if field == "" {
-			panic("builder: empty string in constructor")
-		}
-	}
-	exists := make(map[string]bool)
-	fields := append([]string{"userByID", "booksByAuthorID", "userByIDByName"}, additionalFields...)
-	for _, field := range fields {
-		if exists[field] {
-			panic(fmt.Errorf("builder: duplicate field %q", field))
-		}
-		exists[field] = true
+func NewCacheBuilder() *CacheBuilder {
+	fields := make(map[string]int)
+	for i, field := range []string{"userByID", "booksByAuthorID", "userByIDByName"} {
+		fields[field] = i
 	}
 	return &CacheBuilder{fields: fields}
 }
 
 // WithUserByID sets userByID.
 func (b CacheBuilder) WithUserByID(userByID map[uuid.UUID]*User) CacheBuilder {
-	b.mustSet("userByID")
 	b.cache.userByID = userByID
+	b.Set("userByID")
 	return b
 }
 
 // WithBooksByAuthorID sets booksByAuthorID.
 func (b CacheBuilder) WithBooksByAuthorID(booksByAuthorID map[int64][]Book) CacheBuilder {
-	b.mustSet("booksByAuthorID")
 	b.cache.booksByAuthorID = booksByAuthorID
+	b.Set("booksByAuthorID")
 	return b
 }
 
 // WithUserByIDByName sets userByIDByName.
 func (b CacheBuilder) WithUserByIDByName(userByIDByName map[string]map[int64]User) CacheBuilder {
-	b.mustSet("userByIDByName")
 	b.cache.userByIDByName = userByIDByName
+	b.Set("userByIDByName")
 	return b
 }
 
 // Build returns Cache.
 func (b CacheBuilder) Build() Cache {
-	for i, field := range b.fields {
-		if !b.isSet(i) {
+	for field := range b.fields {
+		if !b.IsSet(field) {
 			panic(fmt.Errorf("builder: %q not set", field))
 		}
 	}
@@ -66,23 +57,25 @@ func (b CacheBuilder) BuildPartial() Cache {
 	return b.cache
 }
 
-func (b *CacheBuilder) mustSet(field string) {
-	i := b.indexOf(field)
-	if b.isSet(i) {
-		panic(fmt.Errorf("builder: set %q twice", field))
+func (b *CacheBuilder) Set(field string) bool {
+	n, ok := b.fields[field]
+	if !ok {
+		return false
 	}
-	b.fieldsSet |= 1 << i
+	b.fieldsSet |= 1 << n
+	return true
+
 }
 
-func (b CacheBuilder) isSet(pos int) bool {
+func (b CacheBuilder) IsSet(field string) bool {
+	pos := b.fields[field]
 	return (b.fieldsSet & (1 << pos)) == (1 << pos)
 }
 
-func (b CacheBuilder) indexOf(field string) int {
-	for i, f := range b.fields {
-		if f == field {
-			return i
-		}
+func (b *CacheBuilder) Register(field string) error {
+	if _, ok := b.fields[field]; ok {
+		return fmt.Errorf("field %q already registered", field)
 	}
-	panic(fmt.Errorf("builder: field: %q not found", field))
+	b.fields[field] = len(b.fields)
+	return nil
 }

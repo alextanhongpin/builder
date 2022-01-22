@@ -9,38 +9,29 @@ import (
 
 type HelloBuilder struct {
 	hello     Hello
-	fields    []string
+	fields    map[string]int
 	fieldsSet uint64
 }
 
-func NewHelloBuilder(additionalFields ...string) *HelloBuilder {
-	for _, field := range additionalFields {
-		if field == "" {
-			panic("builder: empty string in constructor")
-		}
-	}
-	exists := make(map[string]bool)
-	fields := append([]string{"id"}, additionalFields...)
-	for _, field := range fields {
-		if exists[field] {
-			panic(fmt.Errorf("builder: duplicate field %q", field))
-		}
-		exists[field] = true
+func NewHelloBuilder() *HelloBuilder {
+	fields := make(map[string]int)
+	for i, field := range []string{"id"} {
+		fields[field] = i
 	}
 	return &HelloBuilder{fields: fields}
 }
 
 // WithID sets id.
 func (b HelloBuilder) WithID(id uuid.UUID) HelloBuilder {
-	b.mustSet("id")
 	b.hello.id = id
+	b.Set("id")
 	return b
 }
 
 // Build returns Hello.
 func (b HelloBuilder) Build() Hello {
-	for i, field := range b.fields {
-		if !b.isSet(i) {
+	for field := range b.fields {
+		if !b.IsSet(field) {
 			panic(fmt.Errorf("builder: %q not set", field))
 		}
 	}
@@ -52,61 +43,54 @@ func (b HelloBuilder) BuildPartial() Hello {
 	return b.hello
 }
 
-func (b *HelloBuilder) mustSet(field string) {
-	i := b.indexOf(field)
-	if b.isSet(i) {
-		panic(fmt.Errorf("builder: set %q twice", field))
+func (b *HelloBuilder) Set(field string) bool {
+	n, ok := b.fields[field]
+	if !ok {
+		return false
 	}
-	b.fieldsSet |= 1 << i
+	b.fieldsSet |= 1 << n
+	return true
+
 }
 
-func (b HelloBuilder) isSet(pos int) bool {
+func (b HelloBuilder) IsSet(field string) bool {
+	pos := b.fields[field]
 	return (b.fieldsSet & (1 << pos)) == (1 << pos)
 }
 
-func (b HelloBuilder) indexOf(field string) int {
-	for i, f := range b.fields {
-		if f == field {
-			return i
-		}
+func (b *HelloBuilder) Register(field string) error {
+	if _, ok := b.fields[field]; ok {
+		return fmt.Errorf("field %q already registered", field)
 	}
-	panic(fmt.Errorf("builder: field: %q not found", field))
+	b.fields[field] = len(b.fields)
+	return nil
 }
 
 type WorldBuilder struct {
 	world     World
-	fields    []string
+	fields    map[string]int
 	fieldsSet uint64
 }
 
-func NewWorldBuilder(additionalFields ...string) *WorldBuilder {
-	for _, field := range additionalFields {
-		if field == "" {
-			panic("builder: empty string in constructor")
-		}
-	}
-	exists := make(map[string]bool)
-	fields := append([]string{"id"}, additionalFields...)
-	for _, field := range fields {
-		if exists[field] {
-			panic(fmt.Errorf("builder: duplicate field %q", field))
-		}
-		exists[field] = true
+func NewWorldBuilder() *WorldBuilder {
+	fields := make(map[string]int)
+	for i, field := range []string{"id"} {
+		fields[field] = i
 	}
 	return &WorldBuilder{fields: fields}
 }
 
 // WithID sets id.
 func (b WorldBuilder) WithID(id uuid.UUID) WorldBuilder {
-	b.mustSet("id")
 	b.world.id = id
+	b.Set("id")
 	return b
 }
 
 // Build returns World.
 func (b WorldBuilder) Build() World {
-	for i, field := range b.fields {
-		if !b.isSet(i) {
+	for field := range b.fields {
+		if !b.IsSet(field) {
 			panic(fmt.Errorf("builder: %q not set", field))
 		}
 	}
@@ -118,23 +102,25 @@ func (b WorldBuilder) BuildPartial() World {
 	return b.world
 }
 
-func (b *WorldBuilder) mustSet(field string) {
-	i := b.indexOf(field)
-	if b.isSet(i) {
-		panic(fmt.Errorf("builder: set %q twice", field))
+func (b *WorldBuilder) Set(field string) bool {
+	n, ok := b.fields[field]
+	if !ok {
+		return false
 	}
-	b.fieldsSet |= 1 << i
+	b.fieldsSet |= 1 << n
+	return true
+
 }
 
-func (b WorldBuilder) isSet(pos int) bool {
+func (b WorldBuilder) IsSet(field string) bool {
+	pos := b.fields[field]
 	return (b.fieldsSet & (1 << pos)) == (1 << pos)
 }
 
-func (b WorldBuilder) indexOf(field string) int {
-	for i, f := range b.fields {
-		if f == field {
-			return i
-		}
+func (b *WorldBuilder) Register(field string) error {
+	if _, ok := b.fields[field]; ok {
+		return fmt.Errorf("field %q already registered", field)
 	}
-	panic(fmt.Errorf("builder: field: %q not found", field))
+	b.fields[field] = len(b.fields)
+	return nil
 }

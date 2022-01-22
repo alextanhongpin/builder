@@ -9,58 +9,49 @@ import (
 
 type ConfirmationTokenBuilder struct {
 	confirmationToken ConfirmationToken
-	fields            []string
+	fields            map[string]int
 	fieldsSet         uint64
 }
 
-func NewConfirmationTokenBuilder(additionalFields ...string) *ConfirmationTokenBuilder {
-	for _, field := range additionalFields {
-		if field == "" {
-			panic("builder: empty string in constructor")
-		}
-	}
-	exists := make(map[string]bool)
-	fields := append([]string{"expiresAt", "valid", "reference"}, additionalFields...)
-	for _, field := range fields {
-		if exists[field] {
-			panic(fmt.Errorf("builder: duplicate field %q", field))
-		}
-		exists[field] = true
+func NewConfirmationTokenBuilder() *ConfirmationTokenBuilder {
+	fields := make(map[string]int)
+	for i, field := range []string{"expiresAt", "valid", "reference"} {
+		fields[field] = i
 	}
 	return &ConfirmationTokenBuilder{fields: fields}
 }
 
 // WithExpiresAt sets expiresAt.
 func (b ConfirmationTokenBuilder) WithExpiresAt(expiresAt time.Time, valid bool) ConfirmationTokenBuilder {
-	b.mustSet("expiresAt")
 	if valid {
 		b.confirmationToken.expiresAt = &expiresAt
 	}
+	b.Set("expiresAt")
 	return b
 }
 
 // WithValid sets valid.
 func (b ConfirmationTokenBuilder) WithValid(valid bool, valid1 bool) ConfirmationTokenBuilder {
-	b.mustSet("valid")
 	if valid1 {
 		b.confirmationToken.valid = &valid
 	}
+	b.Set("valid")
 	return b
 }
 
 // WithReference sets reference.
 func (b ConfirmationTokenBuilder) WithReference(reference string, valid bool) ConfirmationTokenBuilder {
-	b.mustSet("reference")
 	if valid {
 		b.confirmationToken.reference = &reference
 	}
+	b.Set("reference")
 	return b
 }
 
 // Build returns ConfirmationToken.
 func (b ConfirmationTokenBuilder) Build() ConfirmationToken {
-	for i, field := range b.fields {
-		if !b.isSet(i) {
+	for field := range b.fields {
+		if !b.IsSet(field) {
 			panic(fmt.Errorf("builder: %q not set", field))
 		}
 	}
@@ -72,23 +63,25 @@ func (b ConfirmationTokenBuilder) BuildPartial() ConfirmationToken {
 	return b.confirmationToken
 }
 
-func (b *ConfirmationTokenBuilder) mustSet(field string) {
-	i := b.indexOf(field)
-	if b.isSet(i) {
-		panic(fmt.Errorf("builder: set %q twice", field))
+func (b *ConfirmationTokenBuilder) Set(field string) bool {
+	n, ok := b.fields[field]
+	if !ok {
+		return false
 	}
-	b.fieldsSet |= 1 << i
+	b.fieldsSet |= 1 << n
+	return true
+
 }
 
-func (b ConfirmationTokenBuilder) isSet(pos int) bool {
+func (b ConfirmationTokenBuilder) IsSet(field string) bool {
+	pos := b.fields[field]
 	return (b.fieldsSet & (1 << pos)) == (1 << pos)
 }
 
-func (b ConfirmationTokenBuilder) indexOf(field string) int {
-	for i, f := range b.fields {
-		if f == field {
-			return i
-		}
+func (b *ConfirmationTokenBuilder) Register(field string) error {
+	if _, ok := b.fields[field]; ok {
+		return fmt.Errorf("field %q already registered", field)
 	}
-	panic(fmt.Errorf("builder: field: %q not found", field))
+	b.fields[field] = len(b.fields)
+	return nil
 }

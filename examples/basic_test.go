@@ -57,7 +57,7 @@ func TestPartialErrorBasic(t *testing.T) {
 }
 
 func (u UserBuilder) WithCustomField(remarks string, valid bool) UserBuilder {
-	u.mustSet("remarks")
+	u.Set("remarks")
 	if valid {
 		u.user.remarks = &remarks
 	}
@@ -66,7 +66,12 @@ func (u UserBuilder) WithCustomField(remarks string, valid bool) UserBuilder {
 
 func TestCustomFieldBasic(t *testing.T) {
 	// Supply a new additional fields, `remarks`.
-	user := NewUserBuilder("remarks").
+	ub := NewUserBuilder()
+	if err := ub.Register("remarks"); err != nil {
+		t.Fatalf("failed to register field `remarks`: %v", err)
+	}
+
+	user := ub.
 		WithName("john").
 		WithAge(10).
 		WithMarried(false).
@@ -93,7 +98,9 @@ func TestCustomFieldErrorBasic(t *testing.T) {
 		}
 	}()
 
-	_ = NewUserBuilder("remarks").
+	ub := NewUserBuilder()
+	ub.Register("remarks")
+	_ = ub.
 		WithName("john").
 		WithAge(10).
 		WithMarried(false).
@@ -102,20 +109,12 @@ func TestCustomFieldErrorBasic(t *testing.T) {
 }
 
 func TestCustomFieldDuplicateBasic(t *testing.T) {
-	defer func() {
-		if err := recover(); err == nil {
-			t.Fatal("expected panic when field `name` is set twice")
-		} else {
-			t.Log(err)
-		}
-	}()
-
-	_ = NewUserBuilder("name").
-		WithName("john").
-		WithAge(10).
-		WithMarried(false).
-		WithHobbies([]string{"hello", "world"}).
-		Build()
+	ub := NewUserBuilder()
+	err := ub.Register("name")
+	if err == nil {
+		t.Fatalf("expected error when registering field `name` twice")
+	}
+	t.Log(err)
 }
 
 func TestSetTwiceBasic(t *testing.T) {
